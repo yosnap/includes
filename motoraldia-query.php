@@ -19,6 +19,10 @@ add_filter('bricks/query/run', function($results, $query_obj) {
     $endpoint = 'https://api.motoraldia.com/wp-json/api-motor/v1/vehicles';
     $credentials = base64_encode('paulo:Paulo.5050!');
 
+    // Obtener parámetros de la consulta
+    $number_of_items = isset($query_obj->query_vars['number_of_items']) ? $query_obj->query_vars['number_of_items'] : 10;
+    $order = isset($query_obj->query_vars['order']) ? $query_obj->query_vars['order'] : 'ASC';
+
     $response = wp_remote_get($endpoint, [
         'headers' => [
             'Authorization' => 'Basic ' . $credentials,
@@ -39,19 +43,29 @@ add_filter('bricks/query/run', function($results, $query_obj) {
     $posts = [];
     if (!empty($data['vehicles'])) {
         foreach ($data['vehicles'] as $index => $vehicle) {
-            $post_arr = array(
-                'ID' => $vehicle['id'],
-                'post_title' => $vehicle['titol'],
-                'post_type' => 'motoraldia_vehicle',
-                'post_status' => 'publish',
-                'filter' => 'raw'
-            );
+            if ($index >= $number_of_items) break;
 
-            // Crear el post y establecer los datos del vehículo
-            $post = new WP_Post((object)$post_arr);
-            $post->vehicle_data = $vehicle;
+            // Asegurarnos de que el ID esté en vehicle_data
+            $vehicle_data = $vehicle;
+            $vehicle_data['id'] = $vehicle['id'];
+            
+            // Crear un post object con los datos del vehículo
+            $post = new stdClass();
+            $post->ID = $vehicle['id'];
+            $post->post_title = $vehicle['titol-anunci'] ?? '';
+            $post->post_type = 'vehicle';
+            $post->vehicle_data = $vehicle_data;
+            
+            // Establecer los datos globalmente para este post
+            global $current_post_vehicle;
+            $current_post_vehicle = $vehicle_data;
             
             $posts[] = $post;
+        }
+
+        // Ordenar los posts
+        if ($order === 'DESC') {
+            $posts = array_reverse($posts);
         }
     }
 
@@ -60,13 +74,18 @@ add_filter('bricks/query/run', function($results, $query_obj) {
         $query_obj->posts = $posts;
     }
     
-    // Establecer propiedades de paginación usando @property
-    /** @var int */
-    $query_obj->found_posts = count($posts);
-    /** @var int */
-    $query_obj->post_count = count($posts);
-    /** @var int */
-    $query_obj->current_page = isset($data['current_page']) ? $data['current_page'] : 1;
+    // Establecer propiedades de paginación
+    if (method_exists($query_obj, 'set_found_posts')) {
+        $query_obj->set_found_posts(count($posts));
+    }
+    
+    if (property_exists($query_obj, 'post_count')) {
+        $query_obj->post_count = count($posts);
+    }
+    
+    if (property_exists($query_obj, 'current_page')) {
+        $query_obj->current_page = isset($data['current_page']) ? $data['current_page'] : 1;
+    }
 
     return $posts;
 }, 10, 2);

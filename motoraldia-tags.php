@@ -37,6 +37,25 @@ function get_vehicles_data() {
     return $data;
 }
 
+// Función auxiliar para obtener los datos del vehículo actual
+function get_current_vehicle_data() {
+    global $post, $current_post_vehicle;
+    
+    // Primero intentar obtener del post actual
+    if ($post instanceof WP_Post || is_object($post)) {
+        if (isset($post->vehicle_data)) {
+            return $post->vehicle_data;
+        }
+    }
+    
+    // Luego intentar obtener de la variable global
+    if (!empty($current_post_vehicle)) {
+        return $current_post_vehicle;
+    }
+    
+    return null;
+}
+
 // Registrar los dynamic tags
 add_filter('bricks/dynamic_tags_list', function($tags) {
     // Obtener datos de la API
@@ -67,38 +86,13 @@ add_filter('bricks/dynamic_tags_list', function($tags) {
     return $tags;
 });
 
-// Renderizado de los valores
-add_filter('bricks/dynamic_data/render_content', function($content, $post = null) {
+// Renderizado de los valores para elementos normales
+add_filter('bricks/dynamic_data/render_content', function($content) {
     if (strpos($content, '{vehicle_data:') === false) {
         return $content;
     }
 
-    // Obtener datos del vehículo
-    $vehicle = null;
-    
-    if ($post instanceof WP_Post) {
-        // Intentar obtener datos del post actual
-        if (isset($post->vehicle_data)) {
-            $vehicle = $post->vehicle_data;
-        } elseif (isset($post->meta['vehicle_data'])) {
-            $vehicle = $post->meta['vehicle_data'];
-        }
-    }
-
-    // Si no hay datos en el post, obtener el vehículo específico de la API
-    if (!$vehicle && $post instanceof WP_Post) {
-        $data = get_vehicles_data();
-        if (!empty($data['vehicles'])) {
-            // Buscar el vehículo correspondiente por ID
-            foreach ($data['vehicles'] as $v) {
-                if ($v['id'] == $post->ID) {
-                    $vehicle = $v;
-                    break;
-                }
-            }
-        }
-    }
-
+    $vehicle = get_current_vehicle_data();
     if (!$vehicle) {
         return $content;
     }
@@ -107,4 +101,38 @@ add_filter('bricks/dynamic_data/render_content', function($content, $post = null
         $field = $matches[1];
         return isset($vehicle[$field]) ? $vehicle[$field] : '';
     }, $content);
-}, 10, 2);
+});
+
+// Renderizado para widgets de código
+add_filter('bricks/code/content', function($content) {
+    if (strpos($content, '{vehicle_data:') === false) {
+        return $content;
+    }
+
+    $vehicle = get_current_vehicle_data();
+    if (!$vehicle) {
+        return $content;
+    }
+
+    return preg_replace_callback('/{vehicle_data:([^}]+)}/', function($matches) use ($vehicle) {
+        $field = $matches[1];
+        return isset($vehicle[$field]) ? $vehicle[$field] : '';
+    }, $content);
+});
+
+// Renderizado para links y botones
+add_filter('bricks/link/dynamic_data/render_content', function($content) {
+    if (strpos($content, '{vehicle_data:') === false) {
+        return $content;
+    }
+
+    $vehicle = get_current_vehicle_data();
+    if (!$vehicle) {
+        return $content;
+    }
+
+    return preg_replace_callback('/{vehicle_data:([^}]+)}/', function($matches) use ($vehicle) {
+        $field = $matches[1];
+        return isset($vehicle[$field]) ? $vehicle[$field] : '';
+    }, $content);
+});
