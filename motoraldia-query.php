@@ -21,7 +21,9 @@ add_filter('bricks/query/run', function($results, $query_obj) {
 
     // Obtener los datos de la API
     $data = get_vehicles_data();
+    
     if (empty($data['vehicles'])) {
+        error_log('Motor al día API: No hay vehículos disponibles');
         return [];
     }
 
@@ -29,15 +31,47 @@ add_filter('bricks/query/run', function($results, $query_obj) {
     $total_vehicles = count($data['vehicles']);
     $number_of_items = isset($query_obj->query_vars['number_of_items']) ? min($query_obj->query_vars['number_of_items'], $total_vehicles) : $total_vehicles;
     
+    error_log("Motor al día API: Mostrando $number_of_items de $total_vehicles vehículos");
+    
     // Crear posts para el loop
     $posts = [];
     for ($i = 0; $i < $number_of_items; $i++) {
+        $vehicle = $data['vehicles'][$i];
+        
+        // Crear un objeto post con todos los datos necesarios
         $post = new stdClass();
-        $post->ID = $i;
+        $post->ID = $vehicle['id']; // Usar el ID real del vehículo
         $post->post_type = 'motoraldia_vehicle';
-        $post->current_index = $i;
+        $post->post_title = $vehicle['titol-anunci'];
+        $post->post_content = $vehicle['descripcio-anunci'];
+        $post->permalink = get_vehicle_permalink($vehicle['id']); // Agregar la URL amigable
+        
+        // Agregar todos los campos del vehículo como meta
+        foreach ($vehicle as $key => $value) {
+            $post->{"vehicle_$key"} = $value;
+        }
+        
+        // Campos específicos para Bricks
+        $post->image = $vehicle['imatge-destacada-url'];
+        $post->price = $vehicle['preu'];
+        $post->year = $vehicle['any'];
+        $post->brand = $vehicle['marques-cotxe'];
+        $post->model = $vehicle['models-cotxe'];
+        $post->version = $vehicle['versio'];
+        
         $posts[] = $post;
+        
+        error_log("Motor al día API: Procesando vehículo {$vehicle['id']} - {$vehicle['titol-anunci']}");
     }
+
+    // Debug - Imprimir en el frontend
+    add_action('wp_footer', function() use ($posts) {
+        echo '<script>
+        console.log("Motor al día - Debug Info:");
+        console.log("Total posts:", ' . json_encode(count($posts)) . ');
+        console.log("Posts Data:", ' . json_encode($posts) . ');
+        </script>';
+    }, 999);
 
     return $posts;
 }, 10, 2);
